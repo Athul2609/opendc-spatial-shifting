@@ -59,6 +59,8 @@ import org.opendc.simulator.compute.power.PowerModels
 import org.opendc.simulator.compute.power.PowerSourceNode
 import org.opendc.simulator.compute.power.batteries.BatteryAggregator
 import org.opendc.simulator.compute.power.batteries.BatteryNode
+import org.opendc.simulator.compute.scheduler.CarbonRescorer
+import org.opendc.simulator.compute.scheduler.FilterScheduler
 import org.opendc.simulator.compute.service.ComputeService
 import org.opendc.simulator.compute.virtualization.VirtualizationOverheadModelFactory.VirtualizationOverheadModelEnum
 import org.opendc.simulator.core.ResourceType
@@ -86,8 +88,11 @@ public class HostsProvisioningStep(
     private val powerSources = mutableListOf<PowerSourceNode>()
     private val naming = TopologyNaming()
 
-    /** Gives hosts with an equal model the same [SimHost.modelId]. */
-    private val modelIds = HashMap<HostModel, Int>()
+    /**
+     * Gives hosts with an equal model in the same data center the same [SimHost.modelId]. Hosts in different data centers
+     * differ in carbon intensity, region, price and availability, so they never share an id.
+     */
+    private val modelIds = HashMap<Pair<HostModel, Int>, Int>()
 
     override fun apply(ctx: ProvisioningContext): AutoCloseable {
         val service =
@@ -154,6 +159,8 @@ public class HostsProvisioningStep(
 
         service.addDataCenter(simDataCenter)
 
+        val dataCenterHosts = mutableListOf<SimHost>()
+
         for ((clusterName, count, hostSpecs) in dataCenterSpec.clusters) {
             repeat(count) {
                 val numHosts: Int = hostSpecs.sumOf { it.count }
@@ -181,9 +188,15 @@ public class HostsProvisioningStep(
 
                 // Create hosts, they are connected to the powerMux when SimMachine is created
                 for (hostSpec in hostSpecs) {
-                    this.createHosts(ctx, engine, service, hostSpec, simCluster, clusterPowerDistributor, carbonNode)
+                    dataCenterHosts +=
+                        this.createHosts(ctx, engine, service, dataCenterSpec, hostSpec, simCluster, clusterPowerDistributor, carbonNode)
                 }
             }
+        }
+
+        // Added after the hosts, so they hold the new carbon intensity when they are weighed again
+        if (carbonNode != null && (service.scheduler as? FilterScheduler)?.weighsCarbon == true) {
+            carbonNode.addReceiver(CarbonRescorer(service, dataCenterHosts))
         }
     }
 
@@ -232,7 +245,11 @@ public class HostsProvisioningStep(
         if (carbonFragments != null) {
             carbonNode = CarbonNode(engine, carbonFragments, startTime)
             carbonNode.addReceiver(powerSource)
-            ctx.registry.register(serviceDomain, CarbonNode::class.java, carbonNode)
+            // The registry holds one carbon node, for time shifting; with several data centers it holds the first one.
+            // The hosts and the carbon rescorers subscribe to the carbon node of their own data center directly.
+            if (!ctx.registry.hasService(serviceDomain, CarbonNode::class.java)) {
+                ctx.registry.register(serviceDomain, CarbonNode::class.java, carbonNode)
+            }
         }
 
         return carbonNode
@@ -295,16 +312,18 @@ public class HostsProvisioningStep(
         service.addBattery(battery)
     }
 
+    /** Create the hosts of [hostSpec] in [simCluster], and return them. */
     private fun createHosts(
         ctx: ProvisioningContext,
         engine: FlowEngine,
         service: ComputeService,
+        dataCenterSpec: DataCenterSpec,
         hostSpec: HostSpec,
         simCluster: SimCluster,
         powerDistributor: FlowDistributor,
         carbonNode: CarbonNode?,
-    ) {
-        repeat(hostSpec.count) {
+    ): List<SimHost> =
+        List(hostSpec.count) {
             val cpus =
                 List(hostSpec.cpu.count) {
                     CpuModel(
@@ -353,18 +372,23 @@ public class HostsProvisioningStep(
                     embodiedCarbon,
                     expectedLifetime,
                     powerDistributor,
+                    region = dataCenterSpec.region,
+                    price = dataCenterSpec.price,
+                    availability = dataCenterSpec.availability,
                 )
 
-            simHost.modelId = modelIds.getOrPut(simHost.model) { modelIds.size }
+            simHost.modelId = modelIds.getOrPut(simHost.model to simCluster.dataCenterId) { modelIds.size }
 
             carbonNode?.addReceiver(simHost.simMachine.psu)
+            // Before the host is added to the scheduler, so it is first weighed on the carbon intensity of its data center
+            carbonNode?.addReceiver(simHost)
 
             require(simHosts.add(simHost)) { "Error when making Host $simHost" }
             service.addHost(simHost)
 
             simCluster.addHost(simHost)
+            simHost
         }
-    }
 
     private fun GpuSpec.toGpuModel(id: Int): GpuModel =
         GpuModel(

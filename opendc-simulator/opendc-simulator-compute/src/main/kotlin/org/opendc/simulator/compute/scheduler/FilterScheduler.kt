@@ -27,6 +27,7 @@ import org.opendc.simulator.compute.models.HostModel
 import org.opendc.simulator.compute.models.HostState
 import org.opendc.simulator.compute.scheduler.filters.HostFilter
 import org.opendc.simulator.compute.scheduler.timeshift.Timeshifter
+import org.opendc.simulator.compute.scheduler.weights.CarbonScoreWeigher
 import org.opendc.simulator.compute.scheduler.weights.HostWeigher
 import org.opendc.simulator.compute.task.SimTask
 import java.util.TreeSet
@@ -50,8 +51,12 @@ import java.util.TreeSet
  * for each [org.opendc.simulator.compute.scheduler.filters.ThresholdFilter], so the walk skips blocks in which no host
  * can fit the task (see [HostRanking]).
  *
- * Empty hosts are grouped by [SimHost.modelId]: empty hosts with the same model look the same to every filter and
- * weigher, so only the lowest-id host of each group is ranked, standing in for the whole group.
+ * Empty hosts are grouped by [SimHost.modelId]: empty hosts with the same model id look the same to every filter and
+ * weigher, so only the lowest-id host of each group is ranked, standing in for the whole group. Hosts in different data
+ * centers must therefore get different model ids, since carbon and SLA filters and weighers tell them apart.
+ *
+ * Weighers whose weights change over time, such as the [CarbonScoreWeigher], need the hosts to be updated when their
+ * weights change; see [CarbonRescorer].
  *
  * With a [timeshifter], the scheduler skips the tasks it delays and places the first task in the queue that may start
  * now. Delayed tasks stay queued and are considered again in later scheduling cycles.
@@ -75,6 +80,9 @@ public class FilterScheduler internal constructor(
         numHosts: Int = 1000,
         timeshifter: Timeshifter? = null,
     ) : this(filters, weighers, numHosts, DEFAULT_BLOCK_SIZE, timeshifter)
+
+    /** Whether a weigher depends on the carbon intensity, so the hosts must be weighed again when it changes. */
+    public val weighsCarbon: Boolean = weighers.any { it is CarbonScoreWeigher }
 
     /**
      * The hosts [select] chooses from, from the highest score to the lowest: every used host, and the first host of every

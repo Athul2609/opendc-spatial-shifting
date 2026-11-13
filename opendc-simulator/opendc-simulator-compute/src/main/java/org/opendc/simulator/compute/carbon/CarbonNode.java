@@ -146,6 +146,30 @@ public class CarbonNode extends FlowNode {
                 .toArray();
     }
 
+    /**
+     * The carbon intensity the trace gives [lookahead] ms from now: the intensity of the fragment covering that time,
+     * or of the last fragment if the trace ends before it.
+     *
+     * This is a placeholder forecast that jumps ahead in the trace; it does not average over the period in between.
+     *
+     * @param lookahead How far ahead to look, in ms. Must not be negative.
+     */
+    public double getCarbonIntensityAhead(long lookahead) {
+        if (lookahead < 0) {
+            throw new IllegalArgumentException("The lookahead must not be negative, but is " + lookahead);
+        }
+
+        long target = getAbsoluteTime(this.clock.millis()) + lookahead;
+
+        // The current fragment covers now, so the fragment covering the target is at or after it
+        int index = this.fragment_index;
+        while (index < this.fragments.size() - 1
+                && target >= this.fragments.get(index).getEndTime()) {
+            index++;
+        }
+        return this.fragments.get(index).getCarbonIntensity();
+    }
+
     public static <T, U> List<U> castList(List<T> list, Class<U> clazz) {
         List<U> result = new ArrayList<>();
         for (T element : list) {

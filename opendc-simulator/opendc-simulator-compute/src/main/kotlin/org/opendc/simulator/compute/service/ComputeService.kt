@@ -59,7 +59,7 @@ import java.util.Collections
  */
 public class ComputeService(
     dispatcher: Dispatcher,
-    private val scheduler: ComputeScheduler,
+    public val scheduler: ComputeScheduler,
     quantum: Duration = Duration.ofMillis(1),
     private val maxNumFailures: Int = 10,
 ) : AutoCloseable, CarbonReceiver {

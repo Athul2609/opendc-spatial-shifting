@@ -101,3 +101,27 @@ public data class VGpuFilterSpec(public val allocationRatio: Double = 1.0) : Hos
     override fun validate(): List<ValidationIssue> =
         if (allocationRatio > 0.0) emptyList() else listOf(ValidationIssue("allocationRatio", "must be > 0"))
 }
+
+/**
+ * Keeps hosts whose data center meets the SLA caps of the scenario. A cap that is null is not checked.
+ *
+ * @property allowedRegions The regions a host's data center may be in. A data center without a region is only allowed
+ *   when this is null.
+ * @property maxPrice The highest price a host's data center may have.
+ * @property minAvailability The lowest availability a host's data center may have, between 0 and 1.
+ */
+@Serializable
+@SerialName("slaCap")
+public data class SlaCapFilterSpec(
+    public val allowedRegions: Set<String>? = null,
+    public val maxPrice: Double? = null,
+    public val minAvailability: Double? = null,
+) : HostFilterSpec {
+    override fun validate(): List<ValidationIssue> =
+        buildList {
+            if (maxPrice != null && maxPrice.isNaN()) add(ValidationIssue("maxPrice", "must be a number"))
+            if (minAvailability != null && minAvailability !in 0.0..1.0) {
+                add(ValidationIssue("minAvailability", "must be between 0 and 1"))
+            }
+        }
+}

@@ -23,6 +23,7 @@
 package org.opendc.sdk.runner.factory
 
 import org.opendc.sdk.model.scheduler.AllocationPolicySpec
+import org.opendc.sdk.model.scheduler.CarbonScoreWeigherSpec
 import org.opendc.sdk.model.scheduler.ComputeHostFilterSpec
 import org.opendc.sdk.model.scheduler.CoreRamWeigherSpec
 import org.opendc.sdk.model.scheduler.DifferentHostFilterSpec
@@ -35,6 +36,7 @@ import org.opendc.sdk.model.scheduler.PrefabAllocationPolicySpec
 import org.opendc.sdk.model.scheduler.RamFilterSpec
 import org.opendc.sdk.model.scheduler.RamWeigherSpec
 import org.opendc.sdk.model.scheduler.SameHostFilterSpec
+import org.opendc.sdk.model.scheduler.SlaCapFilterSpec
 import org.opendc.sdk.model.scheduler.TimeshiftSpec
 import org.opendc.sdk.model.scheduler.VCpuCapacityFilterSpec
 import org.opendc.sdk.model.scheduler.VCpuCapacityWeigherSpec
@@ -55,10 +57,12 @@ import org.opendc.simulator.compute.scheduler.filters.HostFilter as EngineHostFi
 import org.opendc.simulator.compute.scheduler.filters.InstanceCountFilter as EngineInstanceCountFilter
 import org.opendc.simulator.compute.scheduler.filters.RamFilter as EngineRamFilter
 import org.opendc.simulator.compute.scheduler.filters.SameHostFilter as EngineSameHostFilter
+import org.opendc.simulator.compute.scheduler.filters.SlaCapFilter as EngineSlaCapFilter
 import org.opendc.simulator.compute.scheduler.filters.VCpuCapacityFilter as EngineVCpuCapacityFilter
 import org.opendc.simulator.compute.scheduler.filters.VCpuFilter as EngineVCpuFilter
 import org.opendc.simulator.compute.scheduler.filters.VGpuFilter as EngineVGpuFilter
 import org.opendc.simulator.compute.scheduler.timeshift.TaskStopper as EngineTaskStopper
+import org.opendc.simulator.compute.scheduler.weights.CarbonScoreWeigher as EngineCarbonScoreWeigher
 import org.opendc.simulator.compute.scheduler.weights.CoreRamWeigher as EngineCoreRamWeigher
 import org.opendc.simulator.compute.scheduler.weights.HostWeigher as EngineHostWeigher
 import org.opendc.simulator.compute.scheduler.weights.InstanceCountWeigher as EngineInstanceCountWeigher
@@ -103,6 +107,12 @@ private fun HostFilterSpec.toEngine(): EngineHostFilter =
         is RamFilterSpec -> EngineRamFilter(allocationRatio)
         is VCpuFilterSpec -> EngineVCpuFilter(allocationRatio)
         is VGpuFilterSpec -> EngineVGpuFilter(allocationRatio)
+        is SlaCapFilterSpec ->
+            EngineSlaCapFilter(
+                allowedRegions,
+                maxPrice ?: Double.POSITIVE_INFINITY,
+                minAvailability ?: 0.0,
+            )
     }
 
 private fun HostWeigherSpec.toEngine(): EngineHostWeigher =
@@ -113,4 +123,5 @@ private fun HostWeigherSpec.toEngine(): EngineHostWeigher =
         is VCpuCapacityWeigherSpec -> EngineVCpuCapacityWeigher(multiplier)
         is VCpuWeigherSpec -> EngineVCpuWeigher(allocationRatio = 1.0, multiplier = multiplier)
         is VGpuWeigherSpec -> EngineVGpuWeigher(allocationRatio = 1.0, multiplier = multiplier)
+        is CarbonScoreWeigherSpec -> EngineCarbonScoreWeigher(multiplier, nowWeight, forecastWeight, forecastHorizon.toMsLong())
     }

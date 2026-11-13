@@ -40,6 +40,7 @@ import org.opendc.sdk.model.carbon.TraceBasedCarbonSpec
 import org.opendc.sdk.model.checkpoint.CheckpointModelSpec
 import org.opendc.sdk.model.dsl.experiment
 import org.opendc.sdk.model.dsl.filterScheduler
+import org.opendc.sdk.model.dsl.hours
 import org.opendc.sdk.model.dsl.minutes
 import org.opendc.sdk.model.dsl.ms
 import org.opendc.sdk.model.dsl.prefabScheduler
@@ -67,6 +68,7 @@ import org.opendc.sdk.model.resource.UriReference
 import org.opendc.sdk.model.sampleTopology
 import org.opendc.sdk.model.sampleWorkload
 import org.opendc.sdk.model.scheduler.AllocationPolicySpec
+import org.opendc.sdk.model.scheduler.CarbonScoreWeigherSpec
 import org.opendc.sdk.model.scheduler.ComputeHostFilterSpec
 import org.opendc.sdk.model.scheduler.CoreRamWeigherSpec
 import org.opendc.sdk.model.scheduler.DifferentHostFilterSpec
@@ -80,6 +82,7 @@ import org.opendc.sdk.model.scheduler.RamFilterSpec
 import org.opendc.sdk.model.scheduler.RamWeigherSpec
 import org.opendc.sdk.model.scheduler.SameHostFilterSpec
 import org.opendc.sdk.model.scheduler.SchedulerPrefabSpec
+import org.opendc.sdk.model.scheduler.SlaCapFilterSpec
 import org.opendc.sdk.model.scheduler.TaskStopperSpec
 import org.opendc.sdk.model.scheduler.TimeshiftSpec
 import org.opendc.sdk.model.scheduler.VCpuCapacityFilterSpec
@@ -249,6 +252,8 @@ class RoundTripTest {
                 RamFilterSpec(allocationRatio = 1.5),
                 VCpuCapacityFilterSpec,
                 VCpuFilterSpec(allocationRatio = 2.0),
+                SlaCapFilterSpec(),
+                SlaCapFilterSpec(allowedRegions = setOf("eu-west", "eu-north"), maxPrice = 0.25, minAvailability = 0.99),
             )
         return filters.map { filter ->
             dynamicTest(filter.toString()) { assertEquals(filter, roundTrip<HostFilterSpec>(filter)) }
@@ -264,6 +269,8 @@ class RoundTripTest {
                 InstanceCountWeigherSpec(0.5),
                 VCpuCapacityWeigherSpec(1.5),
                 VCpuWeigherSpec(3.0),
+                CarbonScoreWeigherSpec(),
+                CarbonScoreWeigherSpec(multiplier = 2.0, nowWeight = 0.5, forecastWeight = 1.5, forecastHorizon = 4.hours),
             )
         return weighers.map { weigher ->
             dynamicTest(weigher.toString()) { assertEquals(weigher, roundTrip<HostWeigherSpec>(weigher)) }

@@ -23,6 +23,8 @@
 package org.opendc.simulator.compute.infrastructure
 
 import org.opendc.common.units.DataSize
+import org.opendc.simulator.compute.carbon.CarbonNode
+import org.opendc.simulator.compute.carbon.CarbonReceiver
 import org.opendc.simulator.compute.machine.SimMachine
 import org.opendc.simulator.compute.models.GpuHostModel
 import org.opendc.simulator.compute.models.HostListener
@@ -63,6 +65,10 @@ import java.time.InstantSource
  * @param embodiedCarbon The embodied carbon of the host.
  * @param expectedLifetime The expected lifetime of the host in years.
  * @param powerDistributor The power distributor to which the host is connected.
+ * @param region The region of the data center the host is in, or null if it has none.
+ * @param price The price of running on the host, copied from its data center.
+ * @param availability The availability of the host, between 0 and 1. A static value for now; in the future a rolling
+ *   metric of how often the host is up.
  */
 public class SimHost(
     public val id: Int,
@@ -76,7 +82,10 @@ public class SimHost(
     private val embodiedCarbon: Double,
     private val expectedLifetime: Double,
     private val powerDistributor: FlowDistributor,
-) : AutoCloseable {
+    public val region: String? = null,
+    public val price: Double = 0.0,
+    public val availability: Double = 1.0,
+) : AutoCloseable, CarbonReceiver {
     // ==================================================================================
     // Fields
     // Identity & configuration, state, tasks, scheduler bookkeeping, and telemetry bookkeeping.
@@ -151,11 +160,29 @@ public class SimHost(
         private set
 
     /**
-     * Identifies the [model] of this host: hosts with an equal model get the same id, so schedulers can group identical
-     * hosts by comparing a number instead of the model. Assigned by whoever creates the hosts, before they are added
-     * to a scheduler; -1 until then. The model of a host does not change during a simulation.
+     * Identifies the [model] of this host: hosts that look the same to the schedulers get the same id, so schedulers can
+     * group identical hosts by comparing a number instead of the model. Hosts that share a model but are in different
+     * data centers must get different ids, because their carbon intensity, region, price and availability differ.
+     * Assigned by whoever creates the hosts, before they are added to a scheduler; -1 until then. The model of a host
+     * does not change during a simulation.
      */
     public var modelId: Int = -1
+
+    /**
+     * The carbon intensity in gCO2/kWh of the power the host draws now, as pushed by the [CarbonNode] of its data
+     * center; 0 if it has none.
+     */
+    public var carbonIntensity: Double = 0.0
+        private set
+
+    /** The carbon trace of the data center of this host, or null if it has none. */
+    private var carbonSource: CarbonNode? = null
+
+    /**
+     * The carbon intensity in gCO2/kWh forecast [lookahead] ms from now, or the current [carbonIntensity] if the host
+     * has no carbon trace.
+     */
+    public fun forecastCarbonIntensity(lookahead: Long): Double = carbonSource?.getCarbonIntensityAhead(lookahead) ?: carbonIntensity
 
     private var lastReport = clock.millis()
     private var totalUptime = 0L
@@ -471,6 +498,26 @@ public class SimHost(
             counters.demand,
             counters.supply / gpuLimit,
         )
+    }
+
+    // ==================================================================================
+    // Carbon receiver
+    // The carbon intensity of the data center, which carbon-aware schedulers weigh the host by.
+    // ==================================================================================
+
+    override fun updateCarbonIntensity(carbonIntensity: Double) {
+        this.carbonIntensity = carbonIntensity
+    }
+
+    override fun setCarbonNode(carbonNode: CarbonNode?) {
+        this.carbonSource = carbonNode
+    }
+
+    override fun removeCarbonNode(carbonNode: CarbonNode?) {
+        if (carbonSource === carbonNode) {
+            carbonSource = null
+            carbonIntensity = 0.0
+        }
     }
 
     // ==================================================================================

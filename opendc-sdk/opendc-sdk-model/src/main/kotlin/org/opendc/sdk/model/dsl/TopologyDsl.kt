@@ -64,6 +64,15 @@ public class DataCenterBuilder(private val name: String) {
     private var powerSource: PowerSourceSpec = PowerSourceSpec()
     private var battery: BatterySpec? = null
 
+    /** The region the data center is in, or null if it has none. */
+    public var region: String? = null
+
+    /** The price of running in the data center. */
+    public var price: Double = 0.0
+
+    /** The availability of the hosts in the data center, between 0 and 1. */
+    public var availability: Double = 1.0
+
     public fun cluster(
         count: Int = 1,
         name: String = "Host",
@@ -101,7 +110,7 @@ public class DataCenterBuilder(private val name: String) {
         battery = BatterySpec(name, capacity, chargingSpeed, initialCharge, policy, embodiedCarbon, expectedLifetime)
     }
 
-    internal fun build(): DataCenterSpec = DataCenterSpec(clusters.toList(), name, powerSource, battery)
+    internal fun build(): DataCenterSpec = DataCenterSpec(clusters.toList(), name, powerSource, battery, region, price, availability)
 }
 
 /** Collects the hosts, power source, and optional battery of a [ClusterSpec]. */
